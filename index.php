@@ -1,4 +1,6 @@
 <?php
+require 'vendor/autoload.php';
+use Elasticsearch\ClientBuilder;
 
 use Phalcon\Db\Adapter\Pdo\Mysql as PdoMysql;
 use Phalcon\Di\FactoryDefault;
@@ -114,6 +116,34 @@ $app->get('/api/mysql', function () use ($app) {
         ->executeQuery($phql);
 
     $response = new Response();
+    $response->setJsonContent(
+        $companies
+    );
+    return $response;
+});
+
+$app->get('/api/elastic', function () use ($app) {
+    $phql = 'SELECT "CodeCompany" as index, C.CodeCompany as id, NameCompany,Country,Instrument,Bid,Ask,Yield,High,Low,Currency,DatePrice,TimePrice '
+    . 'FROM PhalconAPI\Models\CompanySecurity CS '
+    . 'JOIN PhalconAPI\Models\Company C ON CS.CodeCompany = C.CodeCompany '
+    . 'JOIN PhalconAPI\Models\Security S ON CS.CodeSecurity = S.CodeSecurity ';
+
+$companies = $app
+    ->modelsManager
+    ->executeQuery($phql);
+
+$client = ClientBuilder::create()->build();
+$params = [
+    'index' => 'my_index',
+    'id'    => 'my_id',
+    'body'  => ['testField' => 'abc']
+];
+
+$index_companies = $client->index($params);
+
+// $get_companies = $client->get($params);
+
+$response = new Response();
     $response->setJsonContent(
         $companies
     );

@@ -1,0 +1,12 @@
+{
+    "name": "jose_manuel_perez/phalcon_api",
+    "authors": [
+        {
+            "name": "Jose Manuel Pérez",
+            "email": "josemanuelperez@comovapp.es"
+        }
+    ],
+    "require": {
+        "elasticsearch/elasticsearch": "~7.0"
+    }
+}
