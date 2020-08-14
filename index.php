@@ -1,55 +1,124 @@
 <?php
 
+use Phalcon\Db\Adapter\Pdo\Mysql as PdoMysql;
+use Phalcon\Di\FactoryDefault;
 use Phalcon\Http\Response;
+use Phalcon\Loader;
 use Phalcon\Mvc\Micro;
 
-$app = new Micro();
+$loader = new Loader();
+$loader->registerNamespaces(
+    [
+        'PhalconAPI\Models' => __DIR__ . '/models/',
+    ]
+);
+$loader->register();
+
+$container = new FactoryDefault();
+$container->set(
+    'db',
+    function () {
+        return new PdoMysql(
+            [
+                'host' => 'localhost',
+                'username' => 'root',
+                'password' => '1812',
+                'dbname' => 'market',
+            ]
+        );
+    }
+);
+
+$app = new Micro($container);
+
+function toIndexArray($array, $key)
+{
+
+    $indexedArray = [];
+
+    foreach ($array as $value) {
+        $indexedArray[$value[$key]] = $value;
+    }
+
+    return $indexedArray;
+}
 
 $app->get('/api/http', function () {
 
-    $url = 'https://gdh2webfgapi.webfg.com:8088/v1/gdh/marketdata/sab/?code_security=1829035&solution_symbol=SABWEB';
-    $url2 = 'https://gdh2webfgapi.webfg.com:8088/v1/gdh/codeconverter/sab/?code_security=1829035&solution_symbol=SABWEB';
+    try {
 
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $url = 'https://gdh2webfgapi.webfg.com:8088/v1/gdh/marketdata/sab/?code_security=1829035&solution_symbol=SABWEB';
+        $url2 = 'https://gdh2webfgapi.webfg.com:8088/v1/gdh/codeconverter/sab/?code_security=1829035&solution_symbol=SABWEB';
 
-    curl_setopt($ch, CURLOPT_URL, $url);
-    $result = json_decode(curl_exec($ch), true);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-    curl_setopt($ch, CURLOPT_URL, $url2);
-    $result2 = json_decode(curl_exec($ch), true);
+        curl_setopt($ch, CURLOPT_URL, $url);
+        $marketDataResponse = json_decode(curl_exec($ch), true);
 
-    // $final_result = array();
+        curl_setopt($ch, CURLOPT_URL, $url2);
+        $codeConverterResponse = json_decode(curl_exec($ch), true);
 
-    $final_result = array_merge_recursive($result2['records'], $result['records']);
-    foreach ($result['records'] as $record) {
+        $errmsg = curl_error($ch);
 
-        // $codeKey = array_search($result2['records'],)
-        // array_push($final_result, array('codeSecurity' => $record['codeSecurity'],
-        //     'nameAsset' => $record['nameAsset'],
-        //     'trade' => $record['trade'],
-        //     'codeKey' => $result2['records'][$record['codeSecurity']]['codeKey']
-        // ));
+        if ($errmsg) {
+            throw new \Exception(
+                $errmsg
+            );
+        }
+        curl_close($ch);
 
+        $marketData = $marketDataResponse['records'];
+        $codeConverter = $codeConverterResponse['records'];
+
+        $marketDataIndexed = toIndexArray($marketData, 'codeSecurity');
+        $codeConverterIndexed = toIndexArray($codeConverter, 'codeSecurity');
+
+        $final_result = [];
+
+        foreach ($marketDataIndexed as $key => $value) {
+            $codeKey = $codeConverterIndexed[$key]["codeKey"];
+            $final_result[] = array(
+                "codeSecurity" => $key,
+                "nameAsset" => $value["nameAsset"],
+                "trade" => $value["trade"], "codeKey" => $codeKey);
+        }
+
+        $response = new Response();
+        $response->setJsonContent(
+            $final_result
+        );
+        return $response;
+
+    } catch (Exception $exception) {
+        $response = new Response();
+        $response->setJsonContent(
+            [
+                'status' => 'error',
+                'message' => $exception->getMessage(),
+            ]
+        );
+        return $response;
     }
-
-    $errmsg = curl_error($ch);
-
-    curl_close($ch);
-    $response = new Response();
-
-    $response->setJsonContent(
-        $final_result
-    );
-    return $response;
 }
 );
-$app->get(
-    '/',
-    function () {
-        echo '';
-    }
-);
+$app->get('/api/mysql', function () use ($app) {
+    $phql = 'SELECT NameCompany,Country,Instrument,Bid,Ask,Yield,High,Low,Currency,DatePrice,TimePrice '
+        . 'FROM PhalconAPI\Models\CompanySecurity CS '
+        . 'JOIN PhalconAPI\Models\Company C ON CS.CodeCompany = C.CodeCompany '
+        . 'JOIN PhalconAPI\Models\Security S ON CS.CodeSecurity = S.CodeSecurity ';
+
+
+    $companies = $app
+        ->modelsManager
+        ->executeQuery($phql);
+
+    $response = new Response();
+    $response->setJsonContent(
+        $companies
+    );
+    return $response;
+});
 
 $app->handle(
     $_SERVER["REQUEST_URI"]
