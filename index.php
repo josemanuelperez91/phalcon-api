@@ -1,7 +1,6 @@
 <?php
 require 'vendor/autoload.php';
 use Elasticsearch\ClientBuilder;
-
 use Phalcon\Db\Adapter\Pdo\Mysql as PdoMysql;
 use Phalcon\Di\FactoryDefault;
 use Phalcon\Http\Response;
@@ -54,6 +53,7 @@ $app->get('/api/http', function () {
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CAINFO, __DIR__ . "/cacert.pem");
 
         curl_setopt($ch, CURLOPT_URL, $url);
         $marketDataResponse = json_decode(curl_exec($ch), true);
@@ -110,7 +110,6 @@ $app->get('/api/mysql', function () use ($app) {
         . 'JOIN PhalconAPI\Models\Company C ON CS.CodeCompany = C.CodeCompany '
         . 'JOIN PhalconAPI\Models\Security S ON CS.CodeSecurity = S.CodeSecurity ';
 
-
     $companies = $app
         ->modelsManager
         ->executeQuery($phql);
@@ -123,29 +122,33 @@ $app->get('/api/mysql', function () use ($app) {
 });
 
 $app->get('/api/elastic', function () use ($app) {
-    $phql = 'SELECT "CodeCompany" as index, C.CodeCompany as id, NameCompany,Country,Instrument,Bid,Ask,Yield,High,Low,Currency,DatePrice,TimePrice '
-    . 'FROM PhalconAPI\Models\CompanySecurity CS '
-    . 'JOIN PhalconAPI\Models\Company C ON CS.CodeCompany = C.CodeCompany '
-    . 'JOIN PhalconAPI\Models\Security S ON CS.CodeSecurity = S.CodeSecurity ';
+    $phql = 'SELECT C.CodeCompany as id, NameCompany,Country,Instrument,Bid,Ask,Yield,High,Low,Currency,DatePrice,TimePrice '
+        . 'FROM PhalconAPI\Models\CompanySecurity CS '
+        . 'JOIN PhalconAPI\Models\Company C ON CS.CodeCompany = C.CodeCompany '
+        . 'JOIN PhalconAPI\Models\Security S ON CS.CodeSecurity = S.CodeSecurity ';
 
-$companies = $app
-    ->modelsManager
-    ->executeQuery($phql);
+    $companies = $app
+        ->modelsManager
+        ->executeQuery($phql);
 
-$client = ClientBuilder::create()->build();
-$params = [
-    'index' => 'my_index',
-    'id'    => 'my_id',
-    'body'  => ['testField' => 'abc']
-];
+    $params = ['body' => []];
+    $client = ClientBuilder::create()->build();
 
-$index_companies = $client->index($params);
+    foreach ($companies as $company) {
+        $params['body'][] = [
+            'index' => [
+                '_index' => 'companies',
+                '_id'    => $company['id']
+            ],
+        ];
+        $params['body'][] = $company;
+    }
 
-// $get_companies = $client->get($params);
+    $responses = $client->bulk($params);
 
-$response = new Response();
+    $response = new Response();
     $response->setJsonContent(
-        $companies
+        $responses
     );
     return $response;
 });
