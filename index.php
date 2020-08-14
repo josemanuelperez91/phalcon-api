@@ -23,7 +23,7 @@ $container->set(
             [
                 'host' => 'localhost',
                 'username' => 'root',
-                'password' => '1812',
+                'password' => 'testpass',
                 'dbname' => 'market',
             ]
         );
